@@ -13,7 +13,6 @@ class SearchEngine {
     struct ScopeBlocks {
         var head: Int32 = 0
         var tail: Int32 = 0
-        var borrow: Int32 = 0
     }
     
     private var context = SEContext()
@@ -119,6 +118,15 @@ class SearchEngine {
         return (String(bytesNoCopy: UnsafeMutableRawPointer(mutating:lineInfo.line), length:Int(lineInfo.length), encoding:.ascii, freeWhenDone: false)!, Int(lineInfo.number), lineInfo.scope, newWidth)
     }
     
+    func getRowForAbsLine(_ absLine: Int) -> Int {
+        var row : UInt32 = 0
+        guard se_get_row_for_abs_line(&context, UInt32(absLine), &row) == .NoError else {
+            print("[!] unable to get row for line number \(absLine)")
+            return -1
+        }
+        return Int(row)
+    }
+    
     func setIgnoreCase(_ ignoreCase: Bool) -> Bool {
         guard se_set_ignore_case(&context, ignoreCase) == .NoError else {
             print("[!] unable to set ignore case")
@@ -138,13 +146,15 @@ class SearchEngine {
         return true;
     }
     
-    func setPattern(_ pattern: String) -> Bool {
-        guard se_set_pattern(&context, pattern) == .NoError else {
+    func setPattern(_ pattern: String) -> (Bool, String) {
+        let cError = UnsafeMutablePointer<Int8>.allocate(capacity: Int(MAX_ERROR_LENGTH) + 1)
+        guard se_set_pattern(&context, pattern, cError) == .NoError else {
             print("[!] unable to set pattern")
-            return false
+            let error = String(cString: cError)
+            return (false, error)
         }
         
-        return true;
+        return (true, "")
     }
     
     func filter() -> Bool {

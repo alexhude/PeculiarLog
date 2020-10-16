@@ -104,7 +104,7 @@ SearchEngineError SearchEngine::mergeScope(uint32_t *filteredLines)
         carry = 0;
         if(tailLines < 0) {
             carry = (linesLeft > 0)? headLines - linesLeft : (headLines > 0)? headLines : 0;
-            m_blocks[i].borrowTailLines = carry;
+            m_blocks[i].lendedTailLines = carry;
             if (m_beforeTracker[i].getSize() < carry)
                 m_beforeTracker[i].setSize(carry);
         #if DEBUG_BLOCKS
@@ -112,7 +112,7 @@ SearchEngineError SearchEngine::mergeScope(uint32_t *filteredLines)
         #endif
         } else if (headLines < 0) {
             carry = (linesLeft > 0)? tailLines - linesLeft : (tailLines > 0)? tailLines : 0;
-            m_blocks[i-1].borrowHeadLines = carry;
+            m_blocks[i-1].lendedHeadLines = carry;
             if (m_afterTracker[i-1].getSize() < carry)
                 m_afterTracker[i-1].setSize(carry);
         #if DEBUG_BLOCKS
@@ -193,7 +193,14 @@ extern "C" {
 
         return context->engine->getLine(lineNumber, lineInfo);
     }
-    
+
+    SearchEngineError   se_get_row_for_abs_line(struct SEContext* context, uint32_t absLine, uint32_t* row) {
+        if (! (context && context->engine))
+            return InvalidContext;
+        
+        return context->engine->getRowForAbsLine(absLine, row);
+    }
+
     bool se_is_filtered(struct SEContext* context) {
         if (! (context && context->engine))
             return 0;
@@ -219,11 +226,15 @@ extern "C" {
         return context->engine->setScope(before, after);
     }
 
-    SearchEngineError se_set_pattern(struct SEContext* context, const char* pattern) {
+    SearchEngineError se_set_pattern(struct SEContext* context, const char* pattern, char* error) {
         if (! (context && context->engine))
             return InvalidContext;
         
-        return context->engine->setPattern(pattern);
+        if (error) {
+            memset(error, 0, MAX_ERROR_LENGTH + 1);
+        }
+        
+        return context->engine->setPattern(pattern, error);
     }
     
     SearchEngineError se_filter(struct SEContext* context, uint32_t blockIdx, struct SEBlockInfo* info) {

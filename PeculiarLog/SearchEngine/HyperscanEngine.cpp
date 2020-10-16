@@ -12,6 +12,7 @@
 
 #define DEBUG_BLOCKS    0
 #define DEBUG_GETLINE   0
+#define DEBUG_GETROW    0
 
 static const unsigned int SE_HS_EOL_ID      = 0x5EE0;
 static const unsigned int SE_HS_PATTERN_ID  = 0x5EAA;
@@ -216,6 +217,8 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
         m_recentBlock = blockIdx;
         m_recentLineOffset = lineOffset;
         
+        lineInfo->number++; // correct display line number (starting from 1)
+        
         // skip \r at the end of the line if exists
         if (lineInfo->length && lineInfo->line[lineInfo->length-1] == '\r')
             lineInfo->length--;
@@ -230,7 +233,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
             lineOffset = m_recentLineOffset;
             absLineOffset = m_recentAbsLineOffset;
         } else {
-            lineOffset = m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].borrowHeadLines + m_blocks[blockIdx].borrowTailLines;
+            lineOffset = m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].lendedHeadLines + m_blocks[blockIdx].lendedTailLines;
             absLineOffset = m_blocks[blockIdx].lines;
         }
         
@@ -239,7 +242,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
             currentLine = lineOffset;
             lineInfo->number = absLineOffset;
             blockIdx++;
-            lineOffset += m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].borrowHeadLines + m_blocks[blockIdx].borrowTailLines;
+            lineOffset += m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].lendedHeadLines + m_blocks[blockIdx].lendedTailLines;
             absLineOffset += m_blocks[blockIdx].lines;
         }
         
@@ -288,10 +291,10 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
             if (m_blocks[blockIdx].filteredLines) {
                 
                 bool lineFound = false;
-                uint32_t borrowTailLines = m_blocks[blockIdx].borrowTailLines;
-                uint32_t borrowHeadLines = m_blocks[blockIdx].borrowHeadLines;
+                uint32_t lendedTailLines = m_blocks[blockIdx].lendedTailLines;
+                uint32_t lendedHeadLines = m_blocks[blockIdx].lendedHeadLines;
                 if (btracker->hasBaseLine()) {
-                    // return 'before' scope including base line
+                    // return line from 'before' scope including base line
                     if (! btracker->isEmpty()) {
                         __unused auto topLine = btracker->getTopScopeLine();
                         assert(currentLine == topLine);
@@ -312,7 +315,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                         // reset 'before' tracker if we reached match line
                         btracker->reset();
                     }
-                } else if (currentLine > lineOffset - borrowHeadLines) {
+                } else if (currentLine > lineOffset - lendedHeadLines) {
                     if (btracker->getCount()) {
                         uint64_t curPos = btracker->popScope(lineInfo->length);
                         assert(curPos != -1);
@@ -339,7 +342,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                                     atracker->pushBaseLine(scopeBaseLine, lastHit + searchPos, uint32_t(to - lastHit - 1));
                                     btracker->pushBaseLine(scopeBaseLine, lastHit + searchPos, uint32_t(to - lastHit - 1));
 
-                                    // start returning 'before' scope
+                                    // return line from 'before' scope
                                     if (btracker->getCount()) {
                                         absNumber -= btracker->getCount();
                                         uint64_t curPos = btracker->popScope(length);
@@ -372,9 +375,8 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                                     
                                     if (atracker->hasBaseLine()) {
                                         if (!atracker->isFull()) {
-                                            // return 'after' scope
-                                            if (!atracker->pushScope(lastHit + searchPos, len))
-                                                atracker->reset();
+                                            // return line from 'after' scope
+                                            atracker->pushScope(lastHit + searchPos, len);
                                             if (currentLine == number) {
                                                 length = len;
                                                 isScope = true;
@@ -382,9 +384,9 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                                             }
                                             currentLine++;
                                         } else {
-                                            btracker->pushScope(lastHit + searchPos, len); // TODO: investigate
+                                            btracker->pushScope(lastHit + searchPos, len);
                                         }
-                                    } else if (currentLine < baseLine + borrowTailLines) {
+                                    } else if (currentLine < baseLine + lendedTailLines) {
                                         if (currentLine == number) {
                                             length = uint32_t(to - lastHit - 1);
                                             isScope = true;
@@ -392,7 +394,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                                         }
                                         currentLine++;
                                     } else {
-                                        btracker->pushScope(lastHit + searchPos, len); // TODO: investigate
+                                        btracker->pushScope(lastHit + searchPos, len);
                                     }
                                 }
                                 // save pointer to the next line, reset pattern match flag
@@ -411,10 +413,20 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                         return UnknownError;
                     }
 
-                    // borrow head search should reach the end of block
-                    if (borrowHeadLines && res == HS_SUCCESS) {
+                    // borrow for head search should reach the end of block
+                    if (lendedHeadLines && res == HS_SUCCESS) {
                         if (btracker->getCount()) {
+                            // align scope with lended lines
+                            btracker->dropScope(btracker->getCount() - lendedHeadLines);
+                            // correct abs line number
+                            lineInfo->number -= btracker->getCount();
+                            // return line from 'before' scope
                             uint64_t curPos = btracker->popScope(lineInfo->length);
+                            while((currentLine != number) && (curPos != -1)) {
+                                curPos = btracker->popScope(lineInfo->length);
+                                currentLine++;
+                                lineInfo->number++;
+                            }
                             assert(curPos != -1);
                             
                             lastHit = curPos - searchPos;
@@ -425,10 +437,10 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
             } else {
                 // search borrowed line with scope in the block without matches
                 bool lineFound = false;
-                uint32_t borrowTailLines = m_blocks[blockIdx].borrowTailLines;
-                uint32_t borrowHeadLines = m_blocks[blockIdx].borrowHeadLines;
+                uint32_t lendedTailLines = m_blocks[blockIdx].lendedTailLines;
+                uint32_t lendedHeadLines = m_blocks[blockIdx].lendedHeadLines;
                 
-                if (currentLine > lineOffset - borrowHeadLines) {
+                if (currentLine > lineOffset - lendedHeadLines) {
                     if (btracker->getCount()) {
                         uint64_t curPos = btracker->popScope(lineInfo->length);
                         assert(curPos != -1);
@@ -444,7 +456,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                         [&, &absNumber = lineInfo->number, &length = lineInfo->length, &isScope = lineInfo->scope]
                         (unsigned int id, unsigned long long from, unsigned long long to, unsigned int flags, void *ctx) -> int {
                             uint32_t len = uint32_t(to - lastHit - 1);
-                            if (currentLine < baseLine + borrowTailLines) {
+                            if (currentLine < baseLine + lendedTailLines) {
                                 // return lines for the tail of previous block
                                 if (currentLine == number) {
                                     length = len;
@@ -453,7 +465,7 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                                 }
                                 currentLine++;
                             }
-                            if (borrowHeadLines) {
+                            if (lendedHeadLines) {
                                 // borrow lines to the head of next block
                                 btracker->pushScope(lastHit + searchPos, len);
                             }
@@ -468,9 +480,19 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
                     }
                     
                     // borrow head search should reach the end of block
-                    if (borrowHeadLines && res == HS_SUCCESS) {
+                    if (lendedHeadLines && res == HS_SUCCESS) {
                         if (btracker->getCount()) {
+                            // align scope with lended lines
+                            btracker->dropScope(btracker->getCount() - lendedHeadLines);
+                            // correct abs line number
+                            lineInfo->number -= btracker->getCount();
+                            // return line from 'before' scope
                             uint64_t curPos = btracker->popScope(lineInfo->length);
+                            while((currentLine != number) && (curPos != -1)) {
+                                curPos = btracker->popScope(lineInfo->length);
+                                currentLine++;
+                                lineInfo->number++;
+                            }
                             assert(curPos != -1);
                             
                             lastHit = curPos - searchPos;
@@ -520,10 +542,274 @@ SearchEngineError HyperscanEngine::getLine(uint32_t number, SELineInfo* lineInfo
         m_recentLineOffset = lineOffset;
         m_recentAbsLineOffset = absLineOffset;
         
+        lineInfo->number++; // correct display line number (starting from 1)
+
         // skip \r at the end of the line if exists
         if (lineInfo->length && lineInfo->line[lineInfo->length-1] == '\r')
             lineInfo->length--;
     }
+    
+    return NoError;
+}
+
+SearchEngineError HyperscanEngine::getRowForAbsLine(uint32_t absLine, uint32_t* row)
+{
+    if (! row)
+        return BadArgument;
+    
+    if (! m_filtered) {
+        *row = absLine;
+    }
+
+    // find block with line
+    uint32_t dummy = 0;
+    int blockIdx = 0;
+
+    uint32_t absLineCount = 0;
+    uint32_t lineOffset = m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].lendedHeadLines + m_blocks[blockIdx].lendedTailLines;
+    uint32_t absLineOffset = m_blocks[blockIdx].lines;
+    
+    uint32_t currentLine = 0;
+    while (absLine >= absLineOffset) {
+        currentLine = lineOffset;
+        absLineCount = absLineOffset;
+        blockIdx++;
+        lineOffset += m_blocks[blockIdx].filteredLines + m_blocks[blockIdx].lendedHeadLines + m_blocks[blockIdx].lendedTailLines;
+        absLineOffset += m_blocks[blockIdx].lines;
+    }
+    
+    uint32_t baseLine = currentLine;
+    
+    uint64_t basePos = m_blocks[blockIdx].byteOffset;
+    uint64_t searchPos = basePos;
+    uint64_t scanSize = m_blocks[blockIdx].size - (searchPos - basePos);
+    bool patternMatch = false;
+    
+#if DEBUG_GETROW
+    printf("[#] get row for absolute line %d in block %2d starting with line %d at offset %lld\n", absLine, blockIdx, currentLine, searchPos);
+#endif
+    
+    if (m_scopeBefore || m_scopeAfter) {
+        // advanced search with scope support
+        ScopeTracker<MAX_SCOPE_BEFORE, TrackingPolicy::Ring>  btracker;
+        ScopeTracker<MAX_SCOPE_AFTER, TrackingPolicy::Fixed>  atracker;
+        btracker.setSize(m_scopeBefore);
+        atracker.setSize(m_scopeAfter);
+        
+        if (m_blocks[blockIdx].filteredLines) {
+            
+            bool lineFound = false;
+            uint32_t lendedTailLines = m_blocks[blockIdx].lendedTailLines;
+            uint32_t lendedHeadLines = m_blocks[blockIdx].lendedHeadLines;
+            if (btracker.hasBaseLine()) {
+                // return line from 'before' scope including base line
+                if (! btracker.isEmpty()) {
+                    __unused auto topLine = btracker.getTopScopeLine();
+                    assert(currentLine == topLine);
+                    // search offset points to the right line, pop scope line
+                    __unused auto curPos = btracker.popScope(dummy);
+                    assert(curPos == searchPos);
+                    lineFound = true;
+                } else {
+                    __unused auto topLine = btracker.getTopScopeLine();
+                    assert(currentLine == topLine);
+                    // search offset points to the right line, pop base line
+                    __unused auto curPos = btracker.popBaseLine(dummy);
+                    assert(curPos == searchPos);
+                    lineFound = true;
+
+                    // reset 'before' tracker if we reached match line
+                    btracker.reset();
+                }
+            } else if (currentLine > lineOffset - lendedHeadLines) {
+                if (btracker.getCount()) {
+                    __unused auto curPos = btracker.popScope(dummy);
+                    assert(curPos != -1);
+                    lineFound = true;
+                }
+            }
+
+            if (!lineFound) {
+                // search filtered line with scope
+                auto res = hs_scan(m_patternDB, m_mem + searchPos, (unsigned int)scanSize, 0, m_filterScratch,
+                    [&, &btracker = btracker, &atracker = atracker]
+                    (unsigned int id, unsigned long long from, unsigned long long to, unsigned int flags, void *ctx) -> int {
+                        if (id == SE_HS_EOL_ID) {
+                            // for every EOL match check if we have pattern match within this line
+                            // in this case get line length and return when line counter matches target number
+                            if (patternMatch) {
+                                uint32_t scopeBaseLine = currentLine + btracker.getCount();
+                                
+                                // setup scope trackers
+                                atracker.reset();
+                                atracker.pushBaseLine(scopeBaseLine, 0, 0);
+                                btracker.pushBaseLine(scopeBaseLine, 0, 0);
+
+                                // return line from 'before' scope
+                                if (btracker.getCount()) {
+                                    absLineCount -= btracker.getCount();
+                                    uint64_t curPos = btracker.popScope(dummy);
+                                    while(curPos != -1) {
+                                        if (absLineCount >= absLine) {
+                                            return 1;
+                                        }
+                                        curPos = btracker.popScope(dummy);
+                                        currentLine++;
+                                        absLineCount++;
+                                    }
+                                }
+                                
+                                // reset 'before' tracker if we reached match line
+                                btracker.reset();
+
+                                // check if we reached desired pattern match
+                                if (absLineCount >= absLine) {
+                                    return 1;
+                                }
+                                currentLine++;
+                            } else {
+                                // keep tracking scope lines
+                                
+                                if (atracker.hasBaseLine()) {
+                                    if (!atracker.isFull()) {
+                                        // return 'after' scope
+                                        atracker.pushScope(0, 0);
+                                        if (absLineCount >= absLine) {
+                                            return 1;
+                                        }
+                                        currentLine++;
+                                    } else {
+                                        btracker.pushScope(0, 0);
+                                    }
+                                } else if (currentLine < baseLine + lendedTailLines) {
+                                    if (absLineCount >= absLine) {
+                                        return 1;
+                                    }
+                                    currentLine++;
+                                } else {
+                                    btracker.pushScope(0, 0);
+                                }
+                            }
+                            // save pointer to the next line, reset pattern match flag
+                            absLineCount++;
+                            patternMatch = false;
+                        } else if (id == SE_HS_PATTERN_ID) {
+                            // for every pattern match within the line set flag
+                            patternMatch = true;
+                        }
+                        return 0;
+                    }
+                );
+                if (!(res == HS_SUCCESS || res == HS_SCAN_TERMINATED)) {
+                    printf("[!] unable to find filtered line %d with scope\n", absLine);
+                    return UnknownError;
+                }
+
+                // borrow head search should reach the end of block
+                if (lendedHeadLines && res == HS_SUCCESS) {
+                    if (btracker.getCount()) {
+                        // align scope with lended lines
+                        btracker.dropScope(btracker.getCount() - lendedHeadLines);
+                        // correct abs line number
+                        absLineCount -= btracker.getCount();
+                        // return line from 'before' scope
+                        uint64_t curPos = btracker.popScope(dummy);
+                        while((currentLine != absLine) && (curPos != -1)) {
+                            curPos = btracker.popScope(absLineCount);
+                            currentLine++;
+                        }
+                        assert(curPos != -1);
+                    }
+                }
+            }
+        } else {
+            // search borrowed line with scope in the block without matches
+            bool lineFound = false;
+            uint32_t lendedTailLines = m_blocks[blockIdx].lendedTailLines;
+            uint32_t lendedHeadLines = m_blocks[blockIdx].lendedHeadLines;
+            
+            if (currentLine > lineOffset - lendedHeadLines) {
+                if (btracker.getCount()) {
+                    __unused auto curPos = btracker.popScope(dummy);
+                    assert(curPos != -1);
+                    
+                    lineFound = true;
+                }
+            }
+            
+            if (!lineFound) {
+                auto res = hs_scan(m_eolDB, m_mem + searchPos, (unsigned int)scanSize, 0, m_baseScratch,
+                    [&]
+                    (unsigned int id, unsigned long long from, unsigned long long to, unsigned int flags, void *ctx) -> int {
+                        if (absLineCount < baseLine + lendedTailLines) {
+                            // return lines for the tail of previous block
+                            currentLine++;
+                        }
+                        if (lendedHeadLines) {
+                            // borrow lines to the head of next block
+                            btracker.pushScope(0, 0);
+                        }
+                        absLineCount++;
+                        if (absLineCount >= absLine) {
+                            return 1;
+                        }
+                        return 0;
+                    }
+                );
+                if (!(res == HS_SUCCESS || res == HS_SCAN_TERMINATED)) {
+                    printf("[!] unable to find borrowed line %d with scope\n", absLine);
+                    return UnknownError;
+                }
+                
+                // borrow head search should reach the end of block
+                if (lendedHeadLines && res == HS_SUCCESS) {
+                    if (btracker.getCount()) {
+                        // align scope with lended lines
+                        btracker.dropScope(btracker.getCount() - lendedHeadLines);
+                        // correct abs line number
+                        absLineCount -= btracker.getCount();
+                        // returning line from 'before' scope
+                        uint64_t curPos = btracker.popScope(dummy);
+                        while((currentLine != absLine) && (curPos != -1)) {
+                            curPos = btracker.popScope(absLineCount);
+                            currentLine++;
+                        }
+                        assert(curPos != -1);
+                    }
+                }
+            }
+        }
+    } else {
+        // optimized search without scope support
+        auto res = hs_scan(m_patternDB, m_mem + searchPos, (unsigned int)scanSize, 0, m_filterScratch,
+            [&]
+            (unsigned int id, unsigned long long from, unsigned long long to, unsigned int flags, void *ctx) -> int {
+                if (id == SE_HS_EOL_ID) {
+                    // for every EOL match check if we have pattern match within this line
+                    // in this case return when absolute line counter more or equal than target number
+                    if (patternMatch) {
+                        currentLine++;
+                    }
+                    // save pointer to the next line, reset pattern match flag
+                    absLineCount++;
+                    if (absLineCount >= absLine) {
+                        return 1;
+                    }
+                    patternMatch = false;
+                } else if (id == SE_HS_PATTERN_ID) {
+                    // for every pattern match within the line set flag
+                    patternMatch = true;
+                }
+                return 0;
+            }
+        );
+        if (!(res == HS_SUCCESS || res == HS_SCAN_TERMINATED)) {
+            printf("[!] unable to find filtered line %d\n", absLine);
+            return UnknownError;
+        }
+    }
+
+    *row = (currentLine)? currentLine - 1 : currentLine;
     
     return NoError;
 }
@@ -548,7 +834,7 @@ SearchEngineError HyperscanEngine::setScope(uint32_t before, uint32_t after)
     return NoError;
 }
 
-SearchEngineError HyperscanEngine::setPattern(const char* pattern)
+SearchEngineError HyperscanEngine::setPattern(const char* pattern, char* error)
 {
     const char* patterns[2] = {
         s_eolPattern,
@@ -578,6 +864,10 @@ SearchEngineError HyperscanEngine::setPattern(const char* pattern)
         hs_compile_error_t *compile_err;
         if (hs_compile_multi(patterns, flags, s_filterIDs, 2, HS_MODE_BLOCK, nullptr, &m_patternDB, &compile_err) != HS_SUCCESS) {
             printf("[!] unable to compile filter pattern: %s\n", compile_err->message);
+            if (error) {
+                size_t len = strlen(compile_err->message);
+                strncpy(error, compile_err->message, (len > MAX_ERROR_LENGTH)? MAX_ERROR_LENGTH : len);
+            }
             hs_free_compile_error(compile_err);
             return UnknownError;
         }
@@ -599,8 +889,8 @@ SearchEngineError HyperscanEngine::setPattern(const char* pattern)
             m_blocks[block].scopeLines = 0;
             m_blocks[block].headLines = 0;
             m_blocks[block].tailLines = 0;
-            m_blocks[block].borrowHeadLines = 0;
-            m_blocks[block].borrowTailLines = 0;
+            m_blocks[block].lendedHeadLines = 0;
+            m_blocks[block].lendedTailLines = 0;
             m_beforeTracker[block].reset();
             m_afterTracker[block].reset();
         }
@@ -737,7 +1027,7 @@ SearchEngineError HyperscanEngine::filter(uint32_t blockIdx, SEBlockInfo* info)
     info->maxLength = maxLength;
 
 #if DEBUG_BLOCKS
-    printf("[#] filter block %2d ready (%d lines, %2d cols, +%d scope lines %+d|%+d)\n",
+    printf("[#] filter block %2d ready (%d lines, %3d cols, +%d scope lines %+d|%+d)\n",
            blockIdx, info->lines - block->scopeLines, info->maxLength,
            block->scopeLines, block->headLines, block->tailLines);
 #endif

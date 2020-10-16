@@ -314,6 +314,7 @@
 				CODE_SIGN_ENTITLEMENTS = PeculiarLog/PeculiarLog.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				HEADER_SEARCH_PATHS = /usr/local/opt/hyperscan/include/hs;
 				INFOPLIST_FILE = PeculiarLog/Info.plist;
@@ -323,6 +324,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = /usr/local/lib;
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 1.2;
 				OTHER_LDFLAGS = "-lhs";
 				PRODUCT_BUNDLE_IDENTIFIER = tech.peculiar.PeculiarLog;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -342,6 +344,7 @@
 				CODE_SIGN_ENTITLEMENTS = PeculiarLog/PeculiarLog.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				HEADER_SEARCH_PATHS = /usr/local/opt/hyperscan/include/hs;
@@ -352,6 +355,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = /usr/local/lib;
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 1.2;
 				OTHER_LDFLAGS = "-lhs";
 				PRODUCT_BUNDLE_IDENTIFIER = tech.peculiar.PeculiarLog;
 				PRODUCT_NAME = "$(TARGET_NAME)";

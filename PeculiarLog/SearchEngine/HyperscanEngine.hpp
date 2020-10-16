@@ -23,10 +23,11 @@ public:
     void                close() override;
     
     SearchEngineError   getLine(uint32_t number, SELineInfo* lineInfo) override;
+    SearchEngineError   getRowForAbsLine(uint32_t absLine, uint32_t* row) override;
     
     SearchEngineError   setIgnoreCase(bool ignoreCase) override;
     SearchEngineError   setScope(uint32_t before, uint32_t after) override;
-    SearchEngineError   setPattern(const char* pattern) override;
+    SearchEngineError   setPattern(const char* pattern, char* error) override;
     SearchEngineError   filter(uint32_t blockIdx, SEBlockInfo* info) override;
     
 private:

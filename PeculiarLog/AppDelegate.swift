@@ -49,5 +49,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    @IBAction func exportFiltered(_ sender: Any) {
+        print("[+] exporting filtered...")
+        let documentController = NSDocumentController.shared
+        
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsTagField = false
+        savePanel.nameFieldStringValue = (documentController.currentDocument?.displayName)!
+        let res = savePanel.runModal()
+        if(res == NSApplication.ModalResponse.OK) {
+            if let fileName = savePanel.url {
+                (documentController.currentDocument as? Document)?.exportFiltered(fileName: fileName)
+            }
+        }
+    }
+    
+    @IBAction func exportSelected(_ sender: Any) {
+        print("[+] exporting selected...")
+        let documentController = NSDocumentController.shared
+        
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsTagField = false
+        savePanel.nameFieldStringValue = (documentController.currentDocument?.displayName)!
+        let res = savePanel.runModal()
+        if(res == NSApplication.ModalResponse.OK) {
+            if let fileName = savePanel.url {
+                (documentController.currentDocument as? Document)?.exportSelected(fileName: fileName)
+            }
+        }
+    }
 }
 

@@ -8,9 +8,16 @@
 
 import Cocoa
 
+public protocol LogViewDelegate {
+    func patternCompilationError(_ error: String)
+    func selectionChanged()
+}
+
 class LogViewController: NSViewController {
 
     @IBOutlet var tableView: NSTableView!
+    
+    var delegate: LogViewDelegate?
     
     private var currentPattern: String = ""
     private var currentMatchColor: NSColor = NSColor.red
@@ -60,13 +67,20 @@ class LogViewController: NSViewController {
         tableView.tableColumns[cindex].isHidden = !show
     }
     
-    func filterLog(with pattern: String, matchColor: NSColor, scopeColor: NSColor) {
+    func filterLog(with pattern: String, matchColor: NSColor, scopeColor: NSColor, reportError: Bool = false) {
         guard let engine = self.representedObject as? SearchEngine else { return }
         currentPattern = pattern
         currentMatchColor = matchColor
         currentScopeColor = scopeColor
         
-        guard engine.setPattern(pattern) else { return }
+        let (result, error) = engine.setPattern(pattern)
+        guard result else {
+            if (reportError) {
+                delegate?.patternCompilationError(error)
+            }
+            return
+        }
+        
         if (pattern.count != 0) {
             guard engine.filter() else { return }
         }
@@ -78,6 +92,39 @@ class LogViewController: NSViewController {
         tableView.reloadData()
     }
     
+    func gotoAbsLine(_ line: Int) -> Bool {
+        guard let engine = self.representedObject as? SearchEngine else { return false }
+
+        guard
+            line != 0,
+            line <= engine.totalLines
+        else { return false }
+        
+        var row = 0
+        if (engine.isFiltered) {
+            row = engine.getRowForAbsLine(line)
+            guard row != -1 else { return false }
+        } else {
+           row = line - 1
+        }
+        tableView.scrollRowToVisible(row: row, animated: true)
+        return true;
+    }
+}
+
+extension NSTableView {
+    func scrollRowToVisible(row: Int, animated: Bool) {
+        self.selectRowIndexes(IndexSet.init(integer: row), byExtendingSelection: false)
+        let rowRect = self.frameOfCell(atColumn: 1, row: row)
+        if let scrollView = self.enclosingScrollView {
+            let centredPoint = NSMakePoint(0.0, rowRect.origin.y + (rowRect.size.height / 2) - ((scrollView.frame.size.height) / 2))
+            if animated {
+                scrollView.contentView.animator().setBoundsOrigin(centredPoint)
+            } else {
+                self.scroll(centredPoint)
+            }
+        }
+    }
 }
 
 extension String {
@@ -95,6 +142,27 @@ extension String {
 
 extension LogViewController: NSTableViewDataSource, NSTableViewDelegate {
     
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        delegate?.selectionChanged()
+    }
+    
+    @objc func copy(_ sender: AnyObject) {
+        guard let engine = self.representedObject as? SearchEngine else { return; }
+        
+        var selectedLines = ""
+        let indexSet = tableView.selectedRowIndexes
+        
+        for (_, rowIndex) in indexSet.enumerated() {
+            let lineInfo = engine.getLine(rowIndex)
+            selectedLines += lineInfo.line
+            selectedLines += "\n"
+        }
+        
+        let pasteBoard = NSPasteboard.general
+        pasteBoard.clearContents()
+        pasteBoard.setString(selectedLines, forType:NSPasteboard.PasteboardType.string)
+    }
+    
     func numberOfRows(in tableView: NSTableView) -> Int {
         guard let engine = self.representedObject as? SearchEngine else { return 0 }
         return engine.lineCount
@@ -111,7 +179,7 @@ extension LogViewController: NSTableViewDataSource, NSTableViewDelegate {
             rowInfoCache = engine.getLine(row)
             guard let lineInfo = rowInfoCache else { return nil; }
             
-            cell.textField?.stringValue = String(lineInfo.number + 1)
+            cell.textField?.stringValue = String(lineInfo.number)
             cell.wantsLayer = true
             cell.layer?.backgroundColor = NSColor(named: NSColor.Name("LineNumberBackgroundColor"))?.cgColor
             return cell

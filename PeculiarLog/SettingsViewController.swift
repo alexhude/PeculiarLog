@@ -270,16 +270,3 @@ extension SettingsViewController: NSTextFieldDelegate {
     }
     #endif
 }
-
-// MARK: - NumberFormatter customization
-
-class ScopeFormatter: NumberFormatter {
-    override func isPartialStringValid(_ partialString: String, newEditingString newString: AutoreleasingUnsafeMutablePointer<NSString?>?, errorDescription error: AutoreleasingUnsafeMutablePointer<NSString?>?) -> Bool {
-        let characterSet = NSMutableCharacterSet()
-        characterSet.formUnion(with: NSCharacterSet.decimalDigits)
-        if (partialString.rangeOfCharacter(from: characterSet.inverted) != nil) {
-            return false
-        }
-        return true
-    }
-}

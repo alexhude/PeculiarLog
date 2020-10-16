@@ -116,6 +116,21 @@ public:
         return m_scopeLines[index].pos;
     }
     
+    uint64_t dropScope(uint32_t number) {
+        if (m_size == 0)
+            return 0;
+
+        if (number > m_count)
+            number = m_count;
+
+        if (number) {
+            m_count -= number;
+            m_startIndex = wrap(m_startIndex + number);
+        }
+        
+        return number;
+    }
+    
     void reset() {
         m_count = 0;
         

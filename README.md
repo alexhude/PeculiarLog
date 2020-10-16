@@ -12,7 +12,7 @@ You can find most recent compiled version [here](https://github.com/alexhude/Pec
 
 #### Prerequisites
 
-Since **PeculiarLog** is based on Intel Hyperscan engine it is expecting headers to be available at `/usr/local/opt/hyperscan/include/hs` and **libhs.a** located at `/usr/local/lib`
+Since **PeculiarLog** is based on **Intel Hyperscan** engine it is expecting headers to be available at `/usr/local/opt/hyperscan/include/hs` and **libhs.a** located at `/usr/local/lib`
 
 Brew is the easiest way to install Hyperscan engine.
 
@@ -55,7 +55,11 @@ The version of PCRE used to validate Hyperscan’s interpretation of this
 syntax is 8.41 or above.
 ```
 
+Hit enter to get pattern compilation error in the bottom left corner of a status bar.
+
 #### Shortcuts
+
+There is a hint on the right side of a settings panel for the most useful shortcuts.
 
 ```
 ⇧ ⌃ ↑  - increase 'before' scope
@@ -66,7 +70,20 @@ syntax is 8.41 or above.
 ⇧ ⌘ l  - toggle line numbers
 ```
 
-There is also a hint on the right side of a settings panel.
+Some other line related shortcuts available from **View** menu.
+
+```
+⌃ ⌘ l  - copy current line number
+  ⌘ l  - go to line
+```
+
+#### Export
+
+There are several ways to export results:
+
+- select lines right in the application window and copy to clipboard
+- save filtered results to a separate file using **File/Export Filtered** menu
+- save selected lines to a separate file using **File/Export Selected** menu
 
 ### Demo
 

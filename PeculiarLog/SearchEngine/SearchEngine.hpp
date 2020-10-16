@@ -36,7 +36,8 @@ extern "C" {
     static const uint32_t MAX_BLOCK_COUNT   = 40;
     static const uint32_t MAX_SCOPE_BEFORE  = 10;
     static const uint32_t MAX_SCOPE_AFTER   = 10;
-    
+    static const uint32_t MAX_ERROR_LENGTH  = 64;
+
     typedef CF_ENUM(int, SearchEngineError) {
         NoError,
         BadArgument,
@@ -78,9 +79,10 @@ extern "C" {
     SearchEngineError   se_fetch(struct SEContext* context, uint32_t blockIdx, struct SEBlockInfo* info);
     SearchEngineError   se_merge_scope(struct SEContext* context, uint32_t* filteredLines);
     SearchEngineError   se_get_line(struct SEContext* context, uint32_t lineNumber, struct SELineInfo* lineInfo);
+    SearchEngineError   se_get_row_for_abs_line(struct SEContext* context, uint32_t absLine, uint32_t* row);
     bool                se_is_filtered(struct SEContext* context);
     SearchEngineError   se_set_literal(struct SEContext* context, const char* literal);
-    SearchEngineError   se_set_pattern(struct SEContext* context, const char* pattern);
+    SearchEngineError   se_set_pattern(struct SEContext* context, const char* pattern, char* error);
     SearchEngineError   se_set_ignore_case(struct SEContext* context, bool ignoreCase);
     SearchEngineError   se_set_scope(struct SEContext* context, uint32_t before, uint32_t after);
     SearchEngineError   se_filter(struct SEContext* context, uint32_t blockIdx, struct SEBlockInfo* info);
@@ -110,9 +112,10 @@ public:
     virtual void                close();
 
     virtual SearchEngineError   getLine(uint32_t number, SELineInfo* lineInfo) = 0;
+    virtual SearchEngineError   getRowForAbsLine(uint32_t absLine, uint32_t* row) = 0;
     
             bool                isFiltered();
-    virtual SearchEngineError   setPattern(const char* pattern) = 0;
+    virtual SearchEngineError   setPattern(const char* pattern, char* error) = 0;
     virtual SearchEngineError   setIgnoreCase(bool ignoreCase) = 0;
     virtual SearchEngineError   setScope(uint32_t before, uint32_t after) = 0;
     virtual SearchEngineError   filter(uint32_t blockIdx, SEBlockInfo* info) = 0;
@@ -128,16 +131,16 @@ protected:
     
     // optimizations
     struct SEBlock {
-        bool        active;
-        uint64_t    byteOffset;
-        uint32_t    lines;
-        uint32_t    filteredLines;
-        uint32_t    scopeLines;
-        int32_t     headLines;
-        int32_t     tailLines;
-        int32_t     borrowHeadLines;
-        int32_t     borrowTailLines;
-        uint64_t    size;
+        bool        active;             // block is in use
+        uint64_t    byteOffset;         // block start address within the file
+        uint32_t    lines;              // total number of lines
+        uint32_t    filteredLines;      // total number of pattern matching lines
+        uint32_t    scopeLines;         // total number of scope lines
+        int32_t     headLines;          // number of spare lines at the beginning of a block
+        int32_t     tailLines;          // number of spare lines at the end of a block
+        int32_t     lendedHeadLines;    // number of lines to lend to the head of next block
+        int32_t     lendedTailLines;    // number of lines to lend to the tail of previous block
+        uint64_t    size;               // block size
     };
     
     SEBlock         m_blocks[MAX_BLOCK_COUNT] = {0};
